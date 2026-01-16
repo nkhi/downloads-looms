@@ -5,18 +5,18 @@
 # - Pre-download audio detection: skips videos without audio streams
 # - Idempotent: checks if file already exists with valid audio before downloading
 # - Smart format selection: prioritizes MP4, falls back to best video+audio merge
-# - Proper stream merging: combines separate video/audio into a single MP4 using ffmpeg
+# - Proper stream merging: combines separate video/audio into single MP4 using ffmpeg
 # - Post-download validation: verifies audio exists in downloaded files
 # - Clean output: automatically removes temporary .webm files after merge
-
 
 # Configuration
 OUTPUT_DIR="."
 INPUT_FILE="loomurls.txt"
 DRY_RUN=false
 VERBOSE=false
+USE_WEBM=false
 
-# Colours for output
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -34,13 +34,17 @@ while [[ $# -gt 0 ]]; do
             VERBOSE=true
             shift
             ;;
+        --webm)
+            USE_WEBM=true
+            shift
+            ;;
         -o|--output)
             OUTPUT_DIR="$2"
             shift 2
             ;;
         -*)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--trial-run] [--verbose] [-o OUTPUT_DIR] [INPUT_FILE]"
+            echo "Usage: $0 [--trial-run] [--verbose] [--webm] [-o OUTPUT_DIR] [INPUT_FILE]"
             exit 1
             ;;
         *)
@@ -121,8 +125,20 @@ download_video() {
     
     echo -e "${GREEN}✓ Audio stream detected${NC}"
     
+    # Determine output format and extension
+    local output_ext="mp4"
+    local merge_format="mp4"
+    local format_string="http-transcoded/bestvideo+bestaudio/best"
+    
+    if [ "$USE_WEBM" = true ]; then
+        output_ext="webm"
+        merge_format="webm"
+        format_string="bestvideo+bestaudio/best"
+        echo -e "${BLUE}Using WebM format${NC}"
+    fi
+    
     # Get the expected output filename
-    local expected_file=$(yt-dlp --get-filename --output "$OUTPUT_DIR/%(title)s.mp4" "$url" 2>/dev/null)
+    local expected_file=$(yt-dlp --get-filename --output "$OUTPUT_DIR/%(title)s.$output_ext" "$url" 2>/dev/null)
     
     # Check if file already exists
     if [ -f "$expected_file" ]; then
@@ -140,13 +156,15 @@ download_video() {
     
     # Download with proper format selection and merging
     # Priority:
-    # 1. http-transcoded (pre-merged MP4 with audio)
-    # 2. bestvideo+bestaudio (merge best streams)
-    # 3. best (single best format)
+    # MP4: 1. http-transcoded (pre-merged MP4 with audio)
+    #      2. bestvideo+bestaudio (merge best streams)
+    #      3. best (single best format)
+    # WebM: 1. bestvideo+bestaudio (merge best streams)
+    #       2. best (single best format)
     
     local yt_dlp_opts=(
-        --format "http-transcoded/bestvideo+bestaudio/best"
-        --merge-output-format mp4
+        --format "$format_string"
+        --merge-output-format "$merge_format"
         --output "$OUTPUT_DIR/%(title)s.%(ext)s"
         --no-playlist
         --prefer-free-formats
@@ -163,7 +181,7 @@ download_video() {
         echo -e "${GREEN}✓ Download complete${NC}"
         
         # Verify the downloaded file has audio
-        local downloaded_file=$(yt-dlp --get-filename --output "$OUTPUT_DIR/%(title)s.mp4" "$url")
+        local downloaded_file=$(yt-dlp --get-filename --output "$OUTPUT_DIR/%(title)s.$output_ext" "$url")
         if [ -f "$downloaded_file" ]; then
             if ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$downloaded_file" 2>/dev/null | grep -q .; then
                 echo -e "${GREEN}✓ Audio verified in downloaded file${NC}"
