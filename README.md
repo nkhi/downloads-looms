@@ -1,6 +1,8 @@
 # download looms for freeeee
 no business plan? no problem. download all your looms and put them somewhere else
 
+all credit to this helpful guide and it's creator: https://gist.github.com/devinschumacher/b7be00df9d9809d0ea55663d88dc9d3c
+
 ---
 
 0. clone or download repo
